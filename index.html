@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab Grapher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: top bar with sheet tabs / workspace (worksheet | graph, results below) / settings rail on the right */
+:root {
+  --bg: #ECEFF3;
+  --surface: #FFFFFF;
+  --surface-2: #F5F7FA;
+  --ink: #16202B;
+  --muted: #5B6777;
+  --line: #D4DBE3;
+  --accent: #1F5FAD;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E2EBF7;
+  --x-tint: #FFF4DB;
+  --err-tint: #F1E9FB;
+  --ok: #1D7A4E;
+  --ok-soft: #E1F3EA;
+  --bad: #B3261E;
+  --bad-soft: #FBE7E5;
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-num: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --radius: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F141A; --surface: #171E27; --surface-2: #1E2632; --ink: #E5EAF0; --muted: #96A2B2; --line: #2C3644;
+    --accent: #6FA5F2; --accent-ink: #0A1220; --accent-soft: #1C2B41; --x-tint: #33290F; --err-tint: #2A2038;
+    --ok: #5BC492; --ok-soft: #15301F; --bad: #F08A80; --bad-soft: #3A1916; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F141A; --surface: #171E27; --surface-2: #1E2632; --ink: #E5EAF0; --muted: #96A2B2; --line: #2C3644;
+  --accent: #6FA5F2; --accent-ink: #0A1220; --accent-soft: #1C2B41; --x-tint: #33290F; --err-tint: #2A2038;
+  --ok: #5BC492; --ok-soft: #15301F; --bad: #F08A80; --bad-soft: #3A1916; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-ui); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+h2, h3 { text-wrap: balance; margin: 0; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+.brand { font-weight: 600; letter-spacing: .01em; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand svg { display: block; }
+.tabs { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.tab { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 0 2px 0 10px; height: 30px; white-space: nowrap; }
+.tab.active { background: var(--accent-soft); border-color: var(--accent); }
+.tab button.tab-name { border: 0; background: none; padding: 4px 4px; cursor: pointer; font-weight: 500; }
+.tab input { width: 140px; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 4px; background: var(--surface); }
+.tab .x { border: 0; background: none; width: 22px; height: 22px; border-radius: 4px; cursor: pointer; color: var(--muted); }
+.tab .x:hover { background: var(--line); color: var(--ink); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; white-space: nowrap; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.small { height: 26px; padding: 0 9px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.top-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* main layout */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 312px; gap: 16px; padding: 16px; align-items: start; }
+.work { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.25fr); gap: 16px; min-width: 0; }
+.pane { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; display: flex; flex-direction: column; }
+.pane-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.pane-head h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-right: auto; }
+.results-pane { grid-column: 1 / -1; }
+
+/* worksheet */
+.grid-wrap { overflow: auto; max-height: 520px; }
+table.grid { border-collapse: separate; border-spacing: 0; font-family: var(--font-num); font-size: 13px; }
+.grid th, .grid td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 0; }
+.grid thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 2; vertical-align: top; }
+.grid th.corner { left: 0; z-index: 3; width: 40px; }
+.grid th.rown { position: sticky; left: 0; background: var(--surface-2); color: var(--muted); font-weight: 400; width: 40px; min-width: 40px; text-align: center; z-index: 1; }
+.colhead { min-width: 104px; width: 104px; }
+.ch-top { display: flex; align-items: center; gap: 4px; padding: 4px 4px 2px 8px; font-family: var(--font-ui); font-size: 12px; }
+.ch-top .letter { font-weight: 600; }
+.ch-top .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 0 5px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ch-top .spacer { flex: 1; }
+.ch-top select { font-size: 11px; padding: 0 2px; height: 20px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+.ch-top label { display: flex; align-items: center; gap: 3px; color: var(--muted); cursor: pointer; }
+.icon-btn { border: 0; background: none; width: 20px; height: 20px; border-radius: 4px; cursor: pointer; color: var(--muted); line-height: 1; }
+.icon-btn:hover { background: var(--line); color: var(--ink); }
+.grid input.name { width: 100%; border: 0; border-top: 1px dashed var(--line); background: transparent; padding: 5px 8px; font-family: var(--font-ui); font-weight: 600; font-size: 13px; }
+.grid input.cell { width: 104px; border: 0; background: transparent; padding: 4px 8px; height: 27px; text-align: right; font-variant-numeric: tabular-nums; }
+.grid input:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--surface); }
+.grid .is-x { background: var(--x-tint); }
+.grid .is-err { background: var(--err-tint); }
+.grid .is-skip { opacity: .5; }
+.grid td.is-x, .grid td.is-err { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.grid th.addcol { border-right: 0; padding: 6px; background: var(--surface-2); }
+.grid td.filler { border-right: 0; }
+.sheet-foot { padding: 8px 12px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+
+/* graph */
+.fig-wrap { padding: 16px; background: repeating-conic-gradient(var(--surface-2) 0% 25%, var(--surface) 0% 50%) 0 0 / 16px 16px; display: flex; justify-content: center; overflow: auto; flex: 1; }
+#fig svg { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.08); }
+.export-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.export-row select { height: 26px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 13px; }
+
+/* results */
+.results { padding: 12px 14px 16px; display: grid; gap: 18px; }
+.verdict { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.neutral { background: var(--surface-2); color: var(--muted); border-color: var(--line); }
+.verdict .stat-line { font-family: var(--font-num); font-size: 13px; }
+.block-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.block-head h3 { font-size: 14px; font-weight: 600; }
+.block-head .note { color: var(--muted); font-size: 12px; margin-right: auto; }
+.table-scroll { overflow-x: auto; }
+table.rt { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.rt th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 5px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.rt td { padding: 5px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.rt td.n { font-family: var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
+.rt th.n { text-align: right; }
+.rt .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.25); }
+.legend-text { background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 13px; max-width: 80ch; }
+.empty-msg { color: var(--muted); padding: 8px 0; }
+
+/* settings rail */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); position: sticky; top: 66px; max-height: calc(100vh - 82px); overflow: auto; }
+.panel details { border-bottom: 1px solid var(--line); }
+.panel summary { list-style: none; cursor: pointer; padding: 11px 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform .15s; }
+.panel details[open] summary::after { transform: rotate(-135deg); }
+.sec { padding: 0 14px 14px; display: grid; gap: 10px; }
+.field { display: grid; gap: 4px; }
+.field > span, .field > label.lbl { font-size: 12px; color: var(--muted); font-weight: 500; }
+.field input[type=text], .field input[type=number], .field select { height: 30px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; background: var(--surface); width: 100%; min-width: 0; }
+.field input[type=range] { width: 100%; accent-color: var(--accent); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.check { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 13px; }
+.check input { margin-top: 3px; accent-color: var(--accent); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg label { flex: 1; text-align: center; cursor: pointer; font-size: 12.5px; padding: 5px 4px; border-right: 1px solid var(--line); background: var(--surface); }
+.seg label:last-child { border-right: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hint { font-size: 12px; color: var(--muted); margin: 0; }
+.swatches { display: flex; gap: 3px; }
+.swatches i { flex: 1; height: 10px; border-radius: 2px; }
+.color-list { display: grid; gap: 6px; }
+.color-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.color-row input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
+.color-row code { font-family: var(--font-num); font-size: 12px; color: var(--muted); margin-left: auto; }
+.panel[data-mode="xy"] .only-groups, .panel[data-mode="groups"] .only-xy { display: none; }
+.panel-foot { padding: 12px 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* modal + toast */
+.modal-back { position: fixed; inset: 0; background: rgba(10,15,22,.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.modal-back.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; width: min(640px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 18px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.modal h2 { font-size: 17px; }
+.modal p { margin: 0; color: var(--muted); }
+.modal textarea { width: 100%; min-height: 180px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font-family: var(--font-num); font-size: 13px; background: var(--surface-2); resize: vertical; }
+.modal .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.modal .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.modal .preview { font-size: 13px; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+.modal img { max-width: 100%; border: 1px solid var(--line); background: #fff; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 8px; font-size: 13px; display: none; align-items: center; gap: 12px; z-index: 60; max-width: calc(100% - 32px); }
+.toast.show { display: flex; }
+.toast button { background: none; border: 0; color: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; padding: 0; }
+
+@media (max-width: 1180px) { .work { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .panel { position: static; max-height: none; }
+}
+@media (max-width: 480px) {
+  .layout { padding: 12px; gap: 12px; }
+  .top { padding: 8px 12px; }
+  .fig-wrap { padding: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F5FAD">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="description" content="Paste lab data, run ANOVA and post hoc tests, and export publication-ready graphs.">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="1" width="20" height="20" rx="4" fill="var(--accent)"/><rect x="5" y="11" width="3" height="6" fill="var(--accent-ink)"/><rect x="9.5" y="7" width="3" height="10" fill="var(--accent-ink)"/><rect x="14" y="9" width="3" height="8" fill="var(--accent-ink)"/></svg>
+    Lab Grapher
+  </div>
+  <nav class="tabs" id="tabs" aria-label="Sheets"></nav>
+  <div class="top-actions">
+    <button class="btn primary" id="importBtn" type="button">Import data</button>
+    <button class="btn" id="saveProjBtn" type="button">Save project</button>
+    <button class="btn" id="openProjBtn" type="button">Open project</button>
+    <input type="file" id="openProjFile" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="work">
+    <div class="pane sheet-pane">
+      <div class="pane-head">
+        <h2>Worksheet</h2>
+        <button class="btn small" id="addColTop" type="button">+ Column</button>
+        <button class="btn small ghost" id="clearSheet" type="button">Clear</button>
+      </div>
+      <div class="grid-wrap" id="gridWrap"></div>
+      <div class="sheet-foot" id="sheetFoot">Paste straight from Excel or Origin into any cell. Enter moves down.</div>
+    </div>
+
+    <div class="pane graph-pane">
+      <div class="pane-head">
+        <h2>Graph</h2>
+        <div class="export-row">
+          <label for="pngScale" class="hint">PNG size</label>
+          <select id="pngScale" data-k="pngScale">
+            <option value="1">1×</option><option value="2">2×</option><option value="3">3× (≈300 dpi)</option><option value="4">4×</option>
+          </select>
+          <button class="btn small" id="pngBtn" type="button">Export PNG</button>
+          <button class="btn small" id="svgBtn" type="button">Export SVG</button>
+        </div>
+      </div>
+      <div class="fig-wrap"><div id="fig" style="width:100%"></div></div>
+    </div>
+
+    <div class="pane results-pane">
+      <div class="pane-head"><h2>Results</h2><button class="btn small" id="csvBtn" type="button">Export results CSV</button></div>
+      <div class="results" id="results"></div>
+    </div>
+  </section>
+
+  <aside class="panel" id="panel" data-mode="groups" aria-label="Settings">
+    <details open>
+      <summary>Data</summary>
+      <div class="sec">
+        <div class="field">
+          <span>Layout</span>
+          <div class="seg" role="radiogroup" aria-label="Layout">
+            <label><input type="radio" name="mode" value="groups" data-k="mode" id="modeGroups">Groups</label>
+            <label><input type="radio" name="mode" value="xy" data-k="mode" id="modeXY">XY</label>
+          </div>
+          <p class="hint only-groups">Each column is one group, rows are replicates.</p>
+          <p class="hint only-xy">Set column roles in the worksheet header: X, Y, or Y error.</p>
+        </div>
+        <div class="field only-groups">
+          <label class="lbl" for="ctlSel">Control group</label>
+          <select id="ctlSel" data-k="control"></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="blankIn">Blank (subtracted from every value)</label>
+          <input type="number" step="any" id="blankIn" data-k="blank" placeholder="0">
+        </div>
+        <label class="check only-groups"><input type="checkbox" id="normIn" data-k="normalize"><span>Express as % of control<br><span class="hint">Cell viability (%) = (OD − blank) ÷ (control mean − blank) × 100</span></span></label>
+      </div>
+    </details>
+
+    <details open class="only-groups">
+      <summary>Statistics</summary>
+      <div class="sec">
+        <div class="field">
+          <label class="lbl" for="errSel">Error bars</label>
+          <select id="errSel" data-k="err"><option value="sd">SD</option><option value="sem">SEM</option><option value="ci">95% CI</option></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="testSel">Test</label>
+          <select id="testSel" data-k="test">
+            <option value="none">None</option>
+            <option value="anova">One-way ANOVA only</option>
+            <option value="dunnett">ANOVA + Dunnett (each vs control)</option>
+            <option value="tukey">ANOVA + Tukey (all pairs)</option>
+            <option value="welch">Welch t-tests vs control (Holm)</option>
+          </select>
+        </div>
+        <div class="pair">
+          <div class="field">
+            <label class="lbl" for="alphaSel">Significance level</label>
+            <select id="alphaSel" data-k="alpha"><option value="0.05">α = 0.05</option><option value="0.01">α = 0.01</option></select>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="starsIn" data-k="stars"><span>Show stars on graph</span></label>
+        <label class="check"><input type="checkbox" id="nsIn" data-k="showNs"><span>Also label non-significant (ns)</span></label>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Graph</summary>
+      <div class="sec">
+        <div class="field only-groups">
+          <label class="lbl" for="plotSel">Graph type</label>
+          <select id="plotSel" data-k="plot">
+            <option value="bar">Bar ± error</option>
+            <option value="barpts">Bar ± error + points</option>
+            <option value="dot">Dot plot (mean ± error)</option>
+            <option value="box">Box plot + points</option>
+          </select>
+        </div>
+        <div class="field only-xy">
+          <label class="lbl" for="xyStyleSel">Plot style</label>
+          <select id="xyStyleSel" data-k="xyStyle">
+            <option value="linesym">Line + symbol</option>
+            <option value="scatter">Scatter</option>
+            <option value="line">Line</option>
+          </select>
+        </div>
+        <label class="check only-xy"><input type="checkbox" id="fitIn" data-k="fit"><span>Linear fit (shows equation and R²)</span></label>
+        <label class="check only-xy"><input type="checkbox" id="legendIn" data-k="legend"><span>Show legend</span></label>
+        <div class="field">
+          <label class="lbl" for="palSel">Colors</label>
+          <select id="palSel" data-k="palette"></select>
+          <div class="swatches" id="palSw" aria-hidden="true"></div>
+        </div>
+        <div class="color-list" id="colorList"></div>
+        <div class="field"><label class="lbl" for="titleIn">Graph title</label><input type="text" id="titleIn" data-k="title" placeholder="None"></div>
+        <div class="field"><label class="lbl" for="xTitleIn">X axis title</label><input type="text" id="xTitleIn" data-k="xTitle" placeholder="None"></div>
+        <div class="field"><label class="lbl" for="yTitleIn">Y axis title</label><input type="text" id="yTitleIn" data-k="yTitle" placeholder="Automatic"></div>
+        <div class="pair">
+          <div class="field"><label class="lbl" for="yMinIn">Y min</label><input type="number" step="any" id="yMinIn" data-k="yMin" placeholder="Auto"></div>
+          <div class="field"><label class="lbl" for="yMaxIn">Y max</label><input type="number" step="any" id="yMaxIn" data-k="yMax" placeholder="Auto"></div>
+        </div>
+        <div class="pair only-xy">
+          <div class="field"><label class="lbl" for="xMinIn">X min</label><input type="number" step="any" id="xMinIn" data-k="xMin" placeholder="Auto"></div>
+          <div class="field"><label class="lbl" for="xMaxIn">X max</label><input type="number" step="any" id="xMaxIn" data-k="xMax" placeholder="Auto"></div>
+        </div>
+        <div class="field only-groups">
+          <span>Error bar direction</span>
+          <div class="seg" role="radiogroup" aria-label="Error bar direction">
+            <label><input type="radio" name="errDir" value="up" data-k="errDir" id="errUp">Up only</label>
+            <label><input type="radio" name="errDir" value="both" data-k="errDir" id="errBoth">Up and down</label>
+          </div>
+        </div>
+        <div class="field only-groups"><label class="lbl" for="bwIn">Bar width</label><input type="range" min="0.3" max="0.9" step="0.02" id="bwIn" data-k="barWidth"></div>
+        <label class="check only-groups"><input type="checkbox" id="borderIn" data-k="border"><span>Black outline on bars and boxes</span></label>
+        <div class="field">
+          <span>Axes</span>
+          <div class="seg" role="radiogroup" aria-label="Axes frame">
+            <label><input type="radio" name="frame" value="open" data-k="frame" id="frameOpen">Open</label>
+            <label><input type="radio" name="frame" value="box" data-k="frame" id="frameBox">Box</label>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="minorIn" data-k="minor"><span>Minor ticks</span></label>
+        <div class="field only-groups">
+          <label class="lbl" for="rotSel">Group label angle</label>
+          <select id="rotSel" data-k="rotate"><option value="0">Horizontal</option><option value="45">45°</option><option value="90">Vertical</option></select>
+        </div>
+        <div class="pair">
+          <div class="field"><label class="lbl" for="fontSel">Font</label>
+            <select id="fontSel" data-k="font"><option>Arial</option><option>Helvetica</option><option>Times New Roman</option></select></div>
+          <div class="field"><label class="lbl" for="fsIn">Font size (pt)</label><input type="number" min="6" max="40" id="fsIn" data-k="fontSize"></div>
+        </div>
+        <div class="pair">
+          <div class="field"><label class="lbl" for="wIn">Width (px)</label><input type="number" min="240" max="2000" step="10" id="wIn" data-k="width"></div>
+          <div class="field"><label class="lbl" for="hIn">Height (px)</label><input type="number" min="200" max="2000" step="10" id="hIn" data-k="height"></div>
+        </div>
+      </div>
+    </details>
+    <div class="panel-foot">
+      <button class="btn small ghost" id="resetEx" type="button">Restore example sheets</button>
+    </div>
+  </aside>
+</main>
+
+<div class="modal-back" id="modalBack" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" id="modal"></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAct" type="button" hidden>Undo</button></div>
+
+<script>
+/* ---------- Stats engine ---------- */
+const Stats = (() => {
+  const LG = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  function lgamma(x) {
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1; let a = LG[0]; const t = x + 7.5;
+    for (let i = 1; i < 9; i++) a += LG[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+  function betacf(a, b, x) {
+    const FPMIN = 1e-300; const qab = a + b, qap = a + 1, qam = a - 1;
+    let c = 1, d = 1 - qab * x / qap; if (Math.abs(d) < FPMIN) d = FPMIN; d = 1 / d; let h = d;
+    for (let m = 1; m <= 500; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN; c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN; c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d; const del = d * c; h *= del;
+      if (Math.abs(del - 1) < 3e-16) break;
+    }
+    return h;
+  }
+  function ibeta(x, a, b) {
+    if (x <= 0) return 0; if (x >= 1) return 1;
+    const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+  }
+  const tP2 = (t, df) => ibeta(df / (df + t * t), df / 2, 0.5);           // two-sided p
+  const fP = (F, d1, d2) => (F <= 0 ? 1 : ibeta(d2 / (d2 + d1 * F), d2 / 2, d1 / 2));
+  function tCrit(alpha, df) {                                              // two-sided critical t
+    let lo = 0, hi = 1e4;
+    for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (tP2(mid, df) > alpha) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  }
+  function erfc(x) {
+    const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
+    const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+      t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? r : 2 - r;
+  }
+  const Phi = x => 0.5 * erfc(-x / Math.SQRT2);
+  const phi = x => Math.exp(-0.5 * x * x) / 2.5066282746310002;
+  function simpson(f, a, b, n) {
+    const h = (b - a) / n; let s = f(a) + f(b);
+    for (let i = 1; i < n; i++) s += f(a + i * h) * (i % 2 ? 4 : 2);
+    return s * h / 3;
+  }
+  // E[g(s)], s = sqrt(chi2_df / df)
+  function sExpect(df, g) {
+    if (!isFinite(df) || df > 4000) return g(1);
+    const sd = 1 / Math.sqrt(2 * df), lo = Math.max(0, 1 - 10 * sd), hi = 1 + 10 * sd;
+    const c = Math.LN2 + (df / 2) * Math.log(df / 2) - lgamma(df / 2);
+    const dens = s => (s <= 0 ? (df === 1 ? Math.exp(c) : 0) : Math.exp(c + (df - 1) * Math.log(s) - df * s * s / 2));
+    return simpson(s => { const d = dens(s); return d === 0 ? 0 : d * g(s); }, lo, hi, 240);
+  }
+  // P(max_i |T_i| < d), T_i Dunnett statistics with corr lambda_i*lambda_j
+  function dunnettCDF(d, lambdas, df) {
+    return sExpect(df, s => simpson(z => {
+      let p = phi(z);
+      for (const l of lambdas) { const c = Math.sqrt(1 - l * l); p *= Phi((d * s - l * z) / c) - Phi((-d * s - l * z) / c); }
+      return p;
+    }, -8, 8, 200));
+  }
+  // P(studentized range < q) for k means
+  function tukeyCDF(q, k, df) {
+    return sExpect(df, s => { const w = q * s; return k * simpson(z => phi(z) * Math.pow(Math.max(0, Phi(z) - Phi(z - w)), k - 1), -8, 8, 200); });
+  }
+  const clamp01 = p => Math.min(1, Math.max(0, p));
+
+  const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+  function variance(a) { if (a.length < 2) return NaN; const m = mean(a); return a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1); }
+  function quantile(sorted, p) {
+    if (!sorted.length) return NaN; const h = (sorted.length - 1) * p, lo = Math.floor(h);
+    return sorted[lo] + (h - lo) * ((sorted[Math.min(lo + 1, sorted.length - 1)]) - sorted[lo]);
+  }
+  function describe(a) {
+    const n = a.length, m = n ? mean(a) : NaN, sd = Math.sqrt(variance(a)), sem = sd / Math.sqrt(n);
+    const s = [...a].sort((x, y) => x - y);
+    return { n, mean: m, sd, sem, ci: n > 1 ? tCrit(0.05, n - 1) * sem : NaN,
+      min: s[0], max: s[n - 1], median: quantile(s, 0.5), q1: quantile(s, 0.25), q3: quantile(s, 0.75) };
+  }
+  function anova(groups) {
+    const gs = groups.filter(g => g.length > 0); const k = gs.length, N = gs.reduce((s, g) => s + g.length, 0);
+    if (k < 2 || N - k < 1) return null;
+    const grand = gs.flat().reduce((s, v) => s + v, 0) / N;
+    let ssb = 0, ssw = 0;
+    for (const g of gs) { const m = mean(g); ssb += g.length * (m - grand) ** 2; for (const v of g) ssw += (v - m) ** 2; }
+    const dfb = k - 1, dfw = N - k, msb = ssb / dfb, msw = ssw / dfw, F = msb / msw;
+    return { ssb, ssw, sst: ssb + ssw, dfb, dfw, dft: N - 1, msb, msw, F, p: msw > 0 ? fP(F, dfb, dfw) : (msb > 0 ? 0 : 1) };
+  }
+  // groups: array of arrays; ctrl: index. returns [{i, diff, t, p}]
+  function dunnett(groups, ctrl) {
+    const a = anova(groups); if (!a) return null;
+    const n0 = groups[ctrl].length, m0 = mean(groups[ctrl]);
+    const idx = groups.map((g, i) => i).filter(i => i !== ctrl && groups[i].length > 0);
+    const lambdas = idx.map(i => Math.sqrt(groups[i].length / (groups[i].length + n0)));
+    return idx.map(i => {
+      const g = groups[i], diff = mean(g) - m0, se = Math.sqrt(a.msw * (1 / g.length + 1 / n0)), t = diff / se;
+      const p = se > 0 ? clamp01(1 - dunnettCDF(Math.abs(t), lambdas, a.dfw)) : (diff === 0 ? 1 : 0);
+      return { i, j: ctrl, diff, stat: t, p };
+    });
+  }
+  function tukey(groups) {
+    const a = anova(groups); if (!a) return null;
+    const idx = groups.map((g, i) => i).filter(i => groups[i].length > 0), k = idx.length, out = [];
+    for (let x = 0; x < k; x++) for (let y = x + 1; y < k; y++) {
+      const i = idx[x], j = idx[y], diff = mean(groups[j]) - mean(groups[i]);
+      const se = Math.sqrt(a.msw / 2 * (1 / groups[i].length + 1 / groups[j].length)), q = Math.abs(diff) / se;
+      const p = se > 0 ? clamp01(1 - tukeyCDF(q, k, a.dfw)) : (diff === 0 ? 1 : 0);
+      out.push({ i: j, j: i, diff, stat: q, p });
+    }
+    return out;
+  }
+  function welch(a, b) {
+    const va = variance(a) / a.length, vb = variance(b) / b.length, t = (mean(a) - mean(b)) / Math.sqrt(va + vb);
+    const df = (va + vb) ** 2 / (va * va / (a.length - 1) + vb * vb / (b.length - 1));
+    return { t, df, p: isFinite(t) ? tP2(t, df) : NaN };
+  }
+  function holm(ps) {
+    const m = ps.length, order = ps.map((p, i) => [p, i]).sort((x, y) => x[0] - y[0]), adj = new Array(m);
+    let run = 0;
+    order.forEach(([p, i], r) => { run = Math.max(run, Math.min(1, (m - r) * p)); adj[i] = run; });
+    return adj;
+  }
+  function welchVsControl(groups, ctrl) {
+    const idx = groups.map((g, i) => i).filter(i => i !== ctrl && groups[i].length > 1);
+    if (groups[ctrl].length < 2 || !idx.length) return null;
+    const raw = idx.map(i => ({ i, j: ctrl, diff: mean(groups[i]) - mean(groups[ctrl]), ...welch(groups[i], groups[ctrl]) }));
+    const adj = holm(raw.map(r => r.p));
+    return raw.map((r, k) => ({ i: r.i, j: r.j, diff: r.diff, stat: r.t, df: r.df, pRaw: r.p, p: adj[k] }));
+  }
+  function linfit(xs, ys) {
+    const n = xs.length; if (n < 2) return null;
+    const mx = mean(xs), my = mean(ys); let sxx = 0, sxy = 0, syy = 0;
+    for (let i = 0; i < n; i++) { sxx += (xs[i] - mx) ** 2; sxy += (xs[i] - mx) * (ys[i] - my); syy += (ys[i] - my) ** 2; }
+    if (sxx === 0) return null;
+    const slope = sxy / sxx, intercept = my - slope * mx;
+    return { slope, intercept, r2: syy > 0 ? (sxy * sxy) / (sxx * syy) : 1, n };
+  }
+  return { describe, anova, dunnett, tukey, welchVsControl, linfit, tP2, fP, tCrit, tukeyCDF, dunnettCDF, mean };
+})();
+
+
+</script>
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const isNum = s => s !== null && s !== undefined && String(s).trim() !== '' && isFinite(+String(s).trim());
+const num = s => +String(s).trim();
+const letter = i => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const numOr = (v, d) => (isNum(v) ? num(v) : d);
+const KEY = 'labgrapher.v1';
+
+const DEFAULTS = {
+  mode: 'groups', control: null, blank: '0', normalize: false,
+  err: 'sd', test: 'dunnett', alpha: '0.05', stars: true, showNs: false,
+  plot: 'barpts', palette: 'grayblue', colors: {},
+  title: '', xTitle: '', yTitle: '', yMin: '', yMax: '', xMin: '', xMax: '',
+  width: '520', height: '400', font: 'Arial', fontSize: '14', barWidth: '0.62', border: true,
+  frame: 'open', errDir: 'up', rotate: '0', minor: true,
+  fit: false, xyStyle: 'linesym', legend: true, pngScale: '3'
+};
+
+const PALETTES = {
+  grayblue: { name: 'Gray control + blues', seq: ['#9ECAE1', '#4292C6', '#08519C'], ctrlGray: true },
+  grayorange: { name: 'Gray control + oranges', seq: ['#FDAE6B', '#F16913', '#A63603'], ctrlGray: true },
+  graygreen: { name: 'Gray control + greens', seq: ['#A1D99B', '#41AB5D', '#006D2C'], ctrlGray: true },
+  graypurple: { name: 'Gray control + purples', seq: ['#BCBDDC', '#807DBA', '#54278F'], ctrlGray: true },
+  npg: { name: 'Nature (NPG)', cat: ['#E64B35', '#4DBBD5', '#00A087', '#3C5488', '#F39B7F', '#8491B4', '#91D1C2', '#DC0000', '#7E6148', '#B09C85'] },
+  okabe: { name: 'Okabe–Ito (colorblind-safe)', cat: ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#56B4E9', '#CC79A7', '#F0E442', '#000000'] },
+  viridis: { name: 'Viridis', seq: ['#FDE725', '#5EC962', '#21918C', '#3B528B', '#440154'] },
+  gray: { name: 'Grayscale', seq: ['#F0F0F0', '#BDBDBD', '#737373', '#252525'] }
+};
+
+/* ---------- state ---------- */
+function makeSheet(name, cols, settings = {}) {
+  const sh = {
+    id: uid(), name,
+    cols: cols.map((c, i) => ({ id: uid(), name: c.name || '', use: c.use !== false, role: c.role || (i === 0 ? 'x' : 'y'), values: (c.values || []).map(v => (v == null ? '' : String(v))) })),
+    settings: { ...DEFAULTS, colors: {}, ...settings }
+  };
+  if (!sh.settings.control && sh.cols[0]) sh.settings.control = sh.cols[0].id;
+  return sh;
+}
+function exampleSheets() {
+  const a = makeSheet('Ultrasound viability', [
+    { name: 'Control', values: [1.422, 1.425, 1.427] }, { name: '3A', values: [1.363, 1.395, 1.405] },
+    { name: '5A', values: [1.516, 1.436, 1.448] }, { name: '7A', values: [1.287, 1.276, 1.245] }
+  ], { normalize: true, yTitle: 'Cell viability (%)' });
+  const b = makeSheet('Example: standard curve', [
+    { name: 'BSA (µg/mL)', role: 'x', values: [0, 25, 125, 250, 500, 750, 1000, 1500, 2000] },
+    { name: 'Absorbance', role: 'y', values: [0.094, 0.121, 0.205, 0.318, 0.541, 0.752, 0.958, 1.352, 1.718] }
+  ], { mode: 'xy', xyStyle: 'scatter', fit: true, palette: 'okabe', xTitle: 'BSA (µg/mL)', yTitle: 'Absorbance (562 nm)', blank: '' });
+  return [a, b];
+}
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s && Array.isArray(s.sheets) && s.sheets.length) return normalizeState(s);
+  } catch (e) { /* storage unavailable */ }
+  return null;
+}
+function normalizeState(s) {
+  s.sheets.forEach(sh => {
+    sh.id = sh.id || uid(); sh.name = sh.name || 'Sheet';
+    sh.cols = (sh.cols || []).map((c, i) => ({ id: c.id || uid(), name: c.name || '', use: c.use !== false, role: c.role || (i === 0 ? 'x' : 'y'), values: (c.values || []).map(v => (v == null ? '' : String(v))) }));
+    sh.settings = { ...DEFAULTS, ...(sh.settings || {}) }; sh.settings.colors = sh.settings.colors || {};
+  });
+  if (!s.sheets.some(x => x.id === s.active)) s.active = s.sheets[0].id;
+  return s;
+}
+let state = loadState();
+if (!state) { const ex = exampleSheets(); state = { sheets: ex, active: ex[0].id }; }
+const cur = () => state.sheets.find(s => s.id === state.active) || state.sheets[0];
+let saveTimer;
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }, 400); }
+
+/* ---------- toast / modal ---------- */
+let toastTimer, toastUndo = null;
+function toast(msg, undo) {
+  $('#toastMsg').textContent = msg; toastUndo = undo || null;
+  $('#toastAct').hidden = !undo; $('#toast').classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('show'), undo ? 6000 : 2600);
+}
+$('#toastAct').addEventListener('click', () => { if (toastUndo) toastUndo(); toastUndo = null; $('#toast').classList.remove('show'); });
+function openModal(html) { $('#modal').innerHTML = html; $('#modalBack').classList.add('open'); const f = $('#modal [autofocus]') || $('#modal button, #modal textarea'); f && f.focus(); }
+function closeModal() { $('#modalBack').classList.remove('open'); $('#modal').innerHTML = ''; }
+$('#modalBack').addEventListener('click', e => { if (e.target.id === 'modalBack' || e.target.closest('[data-close]')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modalBack').classList.contains('open')) closeModal(); });
+
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg || 'Copied'); return true; } catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+    ta.remove(); toast(ok ? (msg || 'Copied') : 'Copy was blocked. Select the text and copy it manually.'); return ok;
+  }
+}
+
+/* ---------- downloads capability ---------- */
+let DL = null, dlTries = 0;
+function initDownloads() {
+  if (window.claude && typeof window.claude.use === 'function') { window.claude.use('downloads').then(d => { DL = d || null; }).catch(() => { DL = null; }); }
+  else if (dlTries++ < 20) setTimeout(initDownloads, 300);
+}
+initDownloads();
+async function offerFile(filename, data, fallback) {
+  if (DL) {
+    try { await DL.save({ filename, data }); toast('Saved ' + filename); return; } catch (e) {
+      const code = e && e.code;
+      if (code === 'declined') { toast('Save cancelled'); return; }
+      if (code === 'rate_limited') { toast('A save prompt is already open. Try again in a moment.'); return; }
+    }
+  }
+  if (!(window.claude && typeof window.claude.use === 'function')) {
+    // standalone copy opened from disk or a web server: a normal browser download works
+    try {
+      const types = { png: 'image/png', svg: 'image/svg+xml', csv: 'text/csv', json: 'application/json' };
+      const blob = data instanceof Blob ? data : new Blob([data], { type: (types[filename.split('.').pop()] || 'text/plain') + ';charset=utf-8' });
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000); toast('Saved ' + filename + ' to your Downloads'); return;
+    } catch (e) { /* fall through */ }
+  }
+  fallback();
+}
+
+/* ---------- parsing ---------- */
+function splitRows(text) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
+  if (!lines.length) return [];
+  let splitter;
+  if (lines.some(l => l.includes('\t'))) splitter = l => l.split('\t');
+  else if (lines.some(l => l.includes(';'))) splitter = l => l.split(';');
+  else if (lines.some(l => l.includes(','))) splitter = l => l.split(',');
+  else splitter = l => l.trim().split(/\s+/);
+  return lines.map(l => splitter(l).map(v => v.trim().replace(/^"(.*)"$/, '$1')));
+}
+function isRowsLayout(rows) {
+  return rows.length > 0 && rows.every(r => r.length >= 2 && r[0] !== '' && !isNum(r[0]) && r.slice(1).every(v => v === '' || isNum(v))) && rows.some(r => r.slice(1).some(isNum));
+}
+function rowsToColumns(rows, layout = 'auto') {
+  if (!rows.length) return { cols: [], layout: 'columns' };
+  const asRows = layout === 'rows' || (layout === 'auto' && isRowsLayout(rows));
+  if (asRows) return { layout: 'rows', cols: rows.map(r => ({ name: r[0], values: r.slice(1).filter(v => v !== '') })) };
+  const header = rows[0].some(v => v !== '' && !isNum(v));
+  const data = header ? rows.slice(1) : rows;
+  const ncol = Math.max(...rows.map(r => r.length));
+  const cols = [];
+  for (let c = 0; c < ncol; c++) {
+    const vals = data.map(r => r[c] ?? '');
+    while (vals.length && vals[vals.length - 1] === '') vals.pop();
+    cols.push({ name: header ? (rows[0][c] || '') : '', values: vals });
+  }
+  return { layout: 'columns', cols };
+}
+
+/* ---------- worksheet ---------- */
+const lastFilled = vals => { for (let i = vals.length - 1; i >= 0; i--) if (String(vals[i]).trim() !== '') return i + 1; return 0; };
+const displayRows = sh => Math.max(12, Math.max(0, ...sh.cols.map(c => lastFilled(c.values))) + 4);
+
+function renderGrid(focus) {
+  const sh = cur(), st = sh.settings, R = displayRows(sh), xy = st.mode === 'xy';
+  const cls = c => {
+    if (xy) return c.role === 'x' ? 'is-x' : c.role === 'yerr' ? 'is-err' : c.role === 'skip' ? 'is-skip' : '';
+    return c.use === false ? 'is-skip' : '';
+  };
+  let h = '<table class="grid"><thead><tr><th class="corner" scope="col"></th>';
+  sh.cols.forEach((c, ci) => {
+    const L = letter(ci);
+    const ctl = xy
+      ? `<select data-role="${ci}" aria-label="Column ${L} role">${[['x', 'X'], ['y', 'Y'], ['yerr', 'Y err'], ['skip', 'Skip']].map(([v, t]) => `<option value="${v}"${c.role === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
+      : `<label title="Include this column in graph and stats"><input type="checkbox" data-use="${ci}"${c.use !== false ? ' checked' : ''}>use</label>`;
+    const tag = !xy && st.control === c.id && c.use !== false ? '<span class="tag">ctrl</span>' : '';
+    h += `<th class="colhead ${cls(c)}" scope="col"><div class="ch-top"><span class="letter">${L}</span>${tag}<span class="spacer"></span>${ctl}<button class="icon-btn" type="button" data-del="${ci}" aria-label="Delete column ${L}" title="Delete column ${L}">×</button></div><input class="name" data-name="${ci}" value="${esc(c.name)}" placeholder="Name" aria-label="Column ${L} name"></th>`;
+  });
+  h += '<th class="addcol"><button class="btn small" type="button" data-addcol>+</button></th></tr></thead><tbody>';
+  for (let r = 0; r < R; r++) {
+    h += `<tr><th class="rown" scope="row">${r + 1}</th>`;
+    sh.cols.forEach((c, ci) => { h += `<td class="${cls(c)}"><input class="cell" data-r="${r}" data-c="${ci}" value="${esc(c.values[r] ?? '')}" inputmode="decimal" autocomplete="off" aria-label="${letter(ci)}${r + 1}"></td>`; });
+    h += '<td class="filler"></td></tr>';
+  }
+  h += '</tbody></table>';
+  const wrap = $('#gridWrap'); const sx = wrap.scrollLeft, sy = wrap.scrollTop;
+  wrap.innerHTML = h; wrap.scrollLeft = sx; wrap.scrollTop = sy;
+  if (focus) { const el = focus.name != null ? $(`input.name[data-name="${focus.name}"]`) : $(`input.cell[data-r="${focus.r}"][data-c="${focus.c}"]`); if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) { /* number-like */ } } }
+}
+function setCell(sh, r, c, v) {
+  while (sh.cols.length <= c) sh.cols.push({ id: uid(), name: '', use: true, role: 'y', values: [] });
+  const vals = sh.cols[c].values; while (vals.length < r) vals.push(''); vals[r] = v;
+}
+function addColumn() { const sh = cur(); sh.cols.push({ id: uid(), name: '', use: true, role: 'y', values: [] }); renderGrid({ name: sh.cols.length - 1 }); syncPanel(); update(); }
+
+const gw = $('#gridWrap');
+gw.addEventListener('input', e => {
+  const t = e.target, sh = cur();
+  if (t.matches('input.cell')) {
+    const r = +t.dataset.r, c = +t.dataset.c; setCell(sh, r, c, t.value);
+    if (r >= displayRows(sh) - 4 && displayRows(sh) > $$('#gridWrap tbody tr').length) renderGrid({ r, c });
+    scheduleUpdate();
+  } else if (t.matches('input.name')) { sh.cols[+t.dataset.name].name = t.value; scheduleUpdate(true); }
+});
+gw.addEventListener('change', e => {
+  const t = e.target, sh = cur();
+  if (t.matches('[data-use]')) { sh.cols[+t.dataset.use].use = t.checked; renderGrid(); syncPanel(); update(); }
+  if (t.matches('[data-role]')) { sh.cols[+t.dataset.role].role = t.value; renderGrid(); syncPanel(); update(); }
+  if (t.matches('input.name')) syncPanel();
+});
+gw.addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    const sh = cur(), ci = +del.dataset.del, removed = sh.cols.splice(ci, 1)[0];
+    if (sh.settings.control === removed.id) sh.settings.control = sh.cols[0] ? sh.cols[0].id : null;
+    renderGrid(); syncPanel(); update();
+    toast(`Deleted column ${letter(ci)}${removed.name ? ' (' + removed.name + ')' : ''}`, () => { sh.cols.splice(ci, 0, removed); renderGrid(); syncPanel(); update(); });
+  }
+  if (e.target.closest('[data-addcol]')) addColumn();
+});
+gw.addEventListener('keydown', e => {
+  const t = e.target; if (!t.matches('input.cell')) return;
+  const r = +t.dataset.r, c = +t.dataset.c, sh = cur();
+  let nr = r, nc = c;
+  if (e.key === 'Enter' || e.key === 'ArrowDown') nr = r + 1;
+  else if (e.key === 'ArrowUp') nr = r - 1;
+  else if (e.key === 'ArrowRight' && t.selectionStart === t.value.length) nc = c + 1;
+  else if (e.key === 'ArrowLeft' && t.selectionStart === 0) nc = c - 1;
+  else return;
+  if (nr < 0 || nc < 0 || nc >= sh.cols.length) return;
+  e.preventDefault();
+  const el = $(`input.cell[data-r="${nr}"][data-c="${nc}"]`);
+  if (el) { el.focus(); el.select(); } else renderGrid({ r: nr, c: nc });
+});
+gw.addEventListener('paste', e => {
+  const t = e.target; if (!t.matches('input.cell, input.name')) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!/[\t\n]/.test(text.trim()) && !(t.matches('input.name') && /\s{2,}|,/.test(text))) return; // single value: normal paste
+  e.preventDefault();
+  const sh = cur(), rows = splitRows(text); if (!rows.length) return;
+  const c0 = t.matches('input.name') ? +t.dataset.name : +t.dataset.c;
+  let r0 = t.matches('input.name') ? 0 : +t.dataset.r;
+  if (isRowsLayout(rows) || t.matches('input.name') || (r0 === 0 && rows[0].some(v => v !== '' && !isNum(v)) && rows.length > 1)) {
+    const { cols } = rowsToColumns(rows, isRowsLayout(rows) ? 'rows' : 'auto');
+    cols.forEach((col, k) => {
+      const ci = c0 + k; setCell(sh, 0, ci, sh.cols[ci] ? (sh.cols[ci].values[0] ?? '') : '');
+      sh.cols[ci].name = col.name || sh.cols[ci].name; sh.cols[ci].values = col.values.slice();
+    });
+    toast(`Pasted ${cols.length} column${cols.length > 1 ? 's' : ''}`);
+  } else {
+    rows.forEach((row, i) => row.forEach((v, k) => setCell(sh, r0 + i, c0 + k, v)));
+    toast(`Pasted ${rows.length} × ${Math.max(...rows.map(r => r.length))} cells`);
+  }
+  if (!sh.cols.some(c => c.id === sh.settings.control)) sh.settings.control = sh.cols[0].id;
+  renderGrid(); syncPanel(); update();
+});
+$('#addColTop').addEventListener('click', addColumn);
+$('#clearSheet').addEventListener('click', () => {
+  const sh = cur(), backup = JSON.stringify(sh.cols);
+  sh.cols = [0, 1, 2].map((i) => ({ id: uid(), name: '', use: true, role: i === 0 ? 'x' : 'y', values: [] }));
+  sh.settings.control = sh.cols[0].id; sh.settings.colors = {};
+  renderGrid(); syncPanel(); update();
+  toast('Sheet cleared', () => { sh.cols = JSON.parse(backup); sh.settings.control = sh.cols[0] && sh.cols[0].id; renderGrid(); syncPanel(); update(); });
+});
+
+/* ---------- tabs ---------- */
+let renaming = null;
+function renderTabs() {
+  const t = $('#tabs');
+  t.innerHTML = state.sheets.map(sh => {
+    const active = sh.id === state.active;
+    const label = renaming === sh.id
+      ? `<input data-rename="${sh.id}" value="${esc(sh.name)}" aria-label="Sheet name">`
+      : `<button class="tab-name" type="button" data-tab="${sh.id}" title="Double-click to rename"${active ? ' aria-current="true"' : ''}>${esc(sh.name)}</button>`;
+    return `<div class="tab${active ? ' active' : ''}">${label}${state.sheets.length > 1 ? `<button class="x" type="button" data-closetab="${sh.id}" aria-label="Delete sheet ${esc(sh.name)}">×</button>` : ''}</div>`;
+  }).join('') + '<button class="btn small ghost" type="button" id="newSheet">+ Sheet</button>';
+  const inp = $('[data-rename]', t); if (inp) { inp.focus(); inp.select(); }
+}
+$('#tabs').addEventListener('click', e => {
+  const tb = e.target.closest('[data-tab]');
+  if (tb && tb.dataset.tab !== state.active) { state.active = tb.dataset.tab; renderAll(); }
+  const cl = e.target.closest('[data-closetab]');
+  if (cl) {
+    const i = state.sheets.findIndex(s => s.id === cl.dataset.closetab), removed = state.sheets.splice(i, 1)[0];
+    if (state.active === removed.id) state.active = state.sheets[Math.max(0, i - 1)].id;
+    renderAll(); toast(`Deleted sheet “${removed.name}”`, () => { state.sheets.splice(i, 0, removed); state.active = removed.id; renderAll(); });
+  }
+  if (e.target.id === 'newSheet') {
+    const sh = makeSheet('Sheet ' + (state.sheets.length + 1), [{ name: '' }, { name: '' }, { name: '' }]);
+    state.sheets.push(sh); state.active = sh.id; renderAll();
+  }
+});
+$('#tabs').addEventListener('dblclick', e => { const tb = e.target.closest('[data-tab]'); if (tb) { renaming = tb.dataset.tab; renderTabs(); } });
+$('#tabs').addEventListener('keydown', e => {
+  const inp = e.target.closest('[data-rename]');
+  if (inp && e.key === 'Enter') inp.blur();
+  if (inp && e.key === 'Escape') { renaming = null; renderTabs(); }
+  const tb = e.target.closest('[data-tab]');
+  if (tb && e.key === 'F2') { renaming = tb.dataset.tab; renderTabs(); }
+});
+$('#tabs').addEventListener('focusout', e => {
+  const inp = e.target.closest('[data-rename]');
+  if (inp) { const sh = state.sheets.find(s => s.id === inp.dataset.rename); if (sh && inp.value.trim()) sh.name = inp.value.trim(); renaming = null; renderTabs(); scheduleSave(); }
+});
+
+/* ---------- colors ---------- */
+const hex2rgb = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+const rgb2hex = a => '#' + a.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('').toUpperCase();
+function interp(stops, t) {
+  if (stops.length === 1) return stops[0];
+  const x = clamp(t, 0, 1) * (stops.length - 1), i = Math.min(Math.floor(x), stops.length - 2), f = x - i;
+  const a = hex2rgb(stops[i]), b = hex2rgb(stops[i + 1]);
+  return rgb2hex(a.map((v, k) => v + (b[k] - v) * f));
+}
+function paletteColors(key, n, ctrlIdx) {
+  const P = PALETTES[key] || PALETTES.grayblue;
+  if (P.cat) return Array.from({ length: n }, (_, i) => P.cat[i % P.cat.length]);
+  if (P.ctrlGray && ctrlIdx != null && n > 1) {
+    const m = n - 1; let k = 0;
+    return Array.from({ length: n }, (_, i) => (i === ctrlIdx ? '#BDBDBD' : interp(P.seq, m === 1 ? 0.6 : (k++) / (m - 1))));
+  }
+  return Array.from({ length: n }, (_, i) => interp(P.seq, n === 1 ? 0.6 : i / (n - 1)));
+}
+function darken(hex, f = 0.35) { return rgb2hex(hex2rgb(hex).map(v => v * (1 - f))); }
+
+/* ---------- analysis ---------- */
+function analyze(sh) {
+  const st = sh.settings;
+  return st.mode === 'xy' ? analyzeXY(sh) : analyzeGroups(sh);
+}
+function analyzeGroups(sh) {
+  const st = sh.settings;
+  const cols = sh.cols.filter(c => c.use !== false && c.values.some(isNum));
+  if (!cols.length) return { mode: 'groups', empty: true };
+  let ci = cols.findIndex(c => c.id === st.control); if (ci < 0) ci = 0;
+  const b = numOr(st.blank, 0);
+  const raw = cols.map(c => c.values.filter(isNum).map(num));
+  const ctrlNet = Stats.mean(raw[ci]) - b;
+  const norm = !!st.normalize && isFinite(ctrlNet) && ctrlNet !== 0;
+  const tf = v => (norm ? (v - b) / ctrlNet * 100 : v - b);
+  const vals = raw.map(a => a.map(tf));
+  const colors = paletteColors(st.palette, cols.length, ci).map((c, i) => st.colors[cols[i].id] || c);
+  const groups = cols.map((c, i) => ({ id: c.id, name: c.name || letter(sh.cols.indexOf(c)), raw: raw[i], vals: vals[i], color: colors[i], ...Stats.describe(vals[i]) }));
+  let anova = null, post = null; const warn = [];
+  if (st.test !== 'none' && cols.length >= 2) {
+    anova = Stats.anova(vals);
+    if (!anova) warn.push('Need at least 2 groups and more values than groups to run ANOVA.');
+    else {
+      if (st.test === 'dunnett') post = Stats.dunnett(vals, ci);
+      else if (st.test === 'tukey') post = Stats.tukey(vals);
+      else if (st.test === 'welch') { post = Stats.welchVsControl(vals, ci); if (!post) warn.push('Welch t-tests need at least 2 values in the control and in each group.'); }
+    }
+    if (groups.some(g => g.n < 2)) warn.push('Some groups have fewer than 2 values; their SD cannot be calculated.');
+  }
+  if (st.normalize && !norm) warn.push('Control mean minus blank is 0, so values could not be normalized.');
+  return { mode: 'groups', groups, ci, b, norm, anova, post, warn };
+}
+function analyzeXY(sh) {
+  const st = sh.settings, b = numOr(st.blank, 0);
+  const xi = sh.cols.findIndex(c => c.role === 'x');
+  const series = [];
+  const ycols = sh.cols.map((c, i) => [c, i]).filter(([c]) => c.role === 'y');
+  const colors = paletteColors(st.palette, ycols.length, null);
+  ycols.forEach(([c, i], k) => {
+    let ei = -1;
+    for (let j = i + 1; j < sh.cols.length; j++) { if (sh.cols[j].role === 'y') break; if (sh.cols[j].role === 'yerr') { ei = j; break; } }
+    const pts = [];
+    const n = Math.max(c.values.length, xi >= 0 ? sh.cols[xi].values.length : 0);
+    for (let r = 0; r < n; r++) {
+      const xv = xi >= 0 ? sh.cols[xi].values[r] : String(r + 1), yv = c.values[r];
+      if (isNum(xv) && isNum(yv)) pts.push({ x: num(xv), y: num(yv) - b, e: ei >= 0 && isNum(sh.cols[ei].values[r]) ? Math.abs(num(sh.cols[ei].values[r])) : 0 });
+    }
+    if (pts.length) series.push({ id: c.id, name: c.name || letter(i), pts, color: st.colors[c.id] || colors[k], fit: st.fit ? Stats.linfit(pts.map(p => p.x), pts.map(p => p.y)) : null });
+  });
+  if (!series.length) return { mode: 'xy', empty: true, noX: xi < 0 };
+  return { mode: 'xy', series, xName: xi >= 0 ? (sh.cols[xi].name || letter(xi)) : 'Row', noX: xi < 0 };
+}
+
+/* ---------- formatting ---------- */
+function fmt(v) {
+  if (v === undefined || v === null || !isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1000) return v.toFixed(1);
+  if (a >= 10) return v.toFixed(3);
+  if (a >= 1) return v.toFixed(4);
+  if (a >= 1e-4) return v.toPrecision(4);
+  return v.toExponential(3);
+}
+const fmtP = p => (!isFinite(p) ? '—' : p < 0.0001 ? '< 0.0001' : p.toFixed(4));
+const stars = (p, alpha) => (p < 0.001 && alpha >= 0.001 ? '***' : p < 0.01 && alpha >= 0.01 ? '**' : p < alpha ? '*' : 'ns');
+const testLabel = { none: '', anova: 'One-way ANOVA', dunnett: "Dunnett's test vs control", tukey: "Tukey's test, all pairs", welch: "Welch's t-test vs control, Holm-adjusted" };
+
+/* ---------- SVG graph ---------- */
+const fontStack = f => (f === 'Times New Roman' ? "'Times New Roman', Times, serif" : f === 'Helvetica' ? 'Helvetica, Arial, sans-serif' : 'Arial, Helvetica, sans-serif');
+const textW = (s, fs) => String(s).length * fs * 0.56;
+function niceStep(span, count) {
+  if (!(span > 0)) span = 1;
+  const raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+  return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
+}
+function ticksFor(lo, hi, step) { const out = []; const s = Math.ceil(lo / step - 1e-9); for (let k = s; k * step <= hi + step * 1e-9; k++) out.push(+(k * step).toPrecision(12)); return out; }
+function decimalsOf(step) { const s = String(+step.toPrecision(6)); if (s.includes('e')) return Math.max(0, -Math.floor(Math.log10(step))); return (s.split('.')[1] || '').length; }
+const r1 = v => Math.round(v * 10) / 10;
+
+function axisRange(dlo, dhi, userLo, userHi, forceZero, padFrac, round = true) {
+  let lo = isNum(userLo) ? num(userLo) : dlo, hi = isNum(userHi) ? num(userHi) : dhi;
+  if (!isNum(userLo) && forceZero) lo = Math.min(0, lo);
+  if (hi <= lo) { hi = lo + (Math.abs(lo) || 1); }
+  const pad = (hi - lo) * padFrac;
+  if (!isNum(userLo) && !(forceZero && lo === 0)) { const nl = lo - pad; lo = (lo >= 0 && nl < 0 && round) ? 0 : nl; }
+  if (!isNum(userHi)) { const nh = hi + pad; hi = (hi <= 0 && nh > 0 && round) ? 0 : nh; }
+  const step = niceStep(hi - lo, 5);
+  if (round && !isNum(userLo)) lo = Math.floor(lo / step + 1e-9) * step;
+  if (round && !isNum(userHi)) hi = Math.ceil(hi / step - 1e-9) * step;
+  return { lo, hi, step };
+}
+
+function emptySVG(W, H, ff, msg) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(ff)}"><rect width="${W}" height="${H}" fill="#fff"/><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="14" fill="#777">${esc(msg)}</text></svg>`;
+}
+
+function drawYAxis(p, o) {
+  // o: {x0,x1,y0,y1,lo,hi,step,fs,minor,frame,title,ff}
+  const Y = v => o.y1 - (v - o.lo) * (o.y1 - o.y0) / (o.hi - o.lo);
+  const dec = decimalsOf(o.step), ticks = ticksFor(o.lo, o.hi, o.step);
+  p.push(`<line x1="${o.x0}" y1="${o.y0}" x2="${o.x0}" y2="${o.y1}" stroke="#000" stroke-width="1.2"/>`);
+  ticks.forEach(t => { const y = r1(Y(t)); p.push(`<line x1="${o.x0 - 6}" y1="${y}" x2="${o.x0}" y2="${y}" stroke="#000" stroke-width="1.2"/><text x="${o.x0 - 9}" y="${y}" dy="0.35em" text-anchor="end" font-size="${o.fs}">${t.toFixed(dec)}</text>`); });
+  if (o.minor) { for (let k = 0; k < ticks.length + 1; k++) { const v = (ticks[0] - o.step) + o.step * (k + 0.5); if (v > o.lo && v < o.hi) { const y = r1(Y(v)); p.push(`<line x1="${o.x0 - 3}" y1="${y}" x2="${o.x0}" y2="${y}" stroke="#000" stroke-width="1"/>`); } } }
+  if (o.frame === 'box') p.push(`<line x1="${o.x1}" y1="${o.y0}" x2="${o.x1}" y2="${o.y1}" stroke="#000" stroke-width="1.2"/><line x1="${o.x0}" y1="${o.y0}" x2="${o.x1}" y2="${o.y0}" stroke="#000" stroke-width="1.2"/>`);
+  const maxLab = Math.max(...ticks.map(t => textW(t.toFixed(dec), o.fs)));
+  if (o.title) { const tx = o.x0 - 9 - maxLab - o.fs * 0.9, ty = (o.y0 + o.y1) / 2; p.push(`<text transform="translate(${r1(tx)},${r1(ty)}) rotate(-90)" text-anchor="middle" font-size="${o.fs * 1.07}">${esc(o.title)}</text>`); }
+  return Y;
+}
+function yLabelWidth(lo, hi, step, fs) { const dec = decimalsOf(step); return Math.max(...ticksFor(lo, hi, step).map(t => textW(t.toFixed(dec), fs))); }
+
+function renderGraph(sh, an) {
+  const st = sh.settings;
+  const W = Math.round(clamp(numOr(st.width, 520), 240, 2000)), H = Math.round(clamp(numOr(st.height, 400), 200, 2000));
+  const fs = clamp(numOr(st.fontSize, 14), 6, 40), ff = fontStack(st.font);
+  if (an.empty) return emptySVG(W, H, ff, an.mode === 'xy' ? (an.noX ? 'Set one column as X and at least one as Y' : 'Add X and Y values in the worksheet') : 'Type or paste numbers into the worksheet');
+  return an.mode === 'xy' ? renderXY(sh, an, W, H, fs, ff) : renderGroups(sh, an, W, H, fs, ff);
+}
+
+function renderGroups(sh, an, W, H, fs, ff) {
+  const st = sh.settings, G = an.groups, n = G.length, type = st.plot, alpha = numOr(st.alpha, 0.05);
+  const barLike = type === 'bar' || type === 'barpts', showPts = type !== 'bar', both = st.errDir === 'both' || type === 'dot';
+  const errOf = g => { const e = st.err === 'sem' ? g.sem : st.err === 'ci' ? g.ci : g.sd; return isFinite(e) ? e : 0; };
+  const topOf = g => { let t = type === 'box' ? g.max : g.mean + errOf(g); if (showPts && g.vals.length) t = Math.max(t, ...g.vals); return t; };
+  const botOf = g => { let b = type === 'box' ? g.min : (both ? g.mean - errOf(g) : g.mean); if (showPts && g.vals.length) b = Math.min(b, ...g.vals); return b; };
+  const dmax = Math.max(...G.map(topOf)), dmin = Math.min(...G.map(botOf));
+  // significance annotations
+  const marks = []; // {i, label} vs control
+  const brackets = []; // {a, b, label}
+  if (st.stars && an.post && an.post.length) {
+    an.post.forEach(r => {
+      const lab = stars(r.p, alpha); if (lab === 'ns' && !st.showNs) return;
+      if (st.test === 'tukey') brackets.push({ a: Math.min(r.i, r.j), b: Math.max(r.i, r.j), label: lab }); else marks.push({ i: r.i, label: lab });
+    });
+  }
+  const yTitle = st.yTitle || (an.norm ? 'Relative to control (%)' : 'Value');
+  const rot = numOr(st.rotate, 0);
+  const maxName = Math.max(...G.map(g => textW(g.name, fs)));
+  const xLabH = rot === 0 ? fs * 1.3 : rot === 45 ? maxName * 0.71 + fs * 0.6 : maxName + 4;
+  const T = 12 + (st.title ? fs * 1.8 : 0), B = 10 + xLabH + 8 + (st.xTitle ? fs * 1.7 : 0), Rm = 14;
+  const forceZero = barLike || (dmin >= 0 && dmin < 0.5 * dmax);
+  let rng = axisRange(dmin, dmax, st.yMin, st.yMax, forceZero, barLike ? 0.02 : 0.06);
+  let L = 0, Y, layout;
+  const starH = fs * 1.05 + 4, brStep = fs * 1.25 + 8;
+  for (let iter = 0; iter < 8; iter++) {
+    L = 14 + (yTitle ? fs * 1.5 : 0) + yLabelWidth(rng.lo, rng.hi, rng.step, fs) + 12;
+    const y0 = T, y1 = H - B, x0 = L, x1 = W - Rm;
+    Y = v => y1 - (v - rng.lo) * (y1 - y0) / (rng.hi - rng.lo);
+    // layout annotations in px
+    const tops = G.map(g => Y(topOf(g)));
+    let minY = Infinity;
+    const markPos = marks.map(m => { const y = tops[m.i] - 5; minY = Math.min(minY, y - starH); return { ...m, y }; });
+    const placed = [];
+    brackets.sort((p, q) => (p.b - p.a) - (q.b - q.a)).forEach(bk => {
+      let y = Math.min(...tops.slice(bk.a, bk.b + 1)) - 10;
+      placed.forEach(pb => { if (!(pb.b < bk.a || pb.a > bk.b)) y = Math.min(y, pb.y - brStep); });
+      placed.push({ ...bk, y }); minY = Math.min(minY, y - fs * 1.1);
+    });
+    layout = { x0, x1, y0, y1, markPos, placed };
+    if (isNum(st.yMax) || minY >= y0 + 2) break;
+    const ppu = (y1 - y0) / (rng.hi - rng.lo), need = rng.hi + (y0 + 2 - minY) / ppu;
+    rng = axisRange(dmin, need, st.yMin, st.yMax, forceZero, 0);
+  }
+  const { x0, x1, y0, y1 } = layout;
+  const p = [];
+  p.push(`<rect width="${W}" height="${H}" fill="#fff"/>`);
+  if (st.title) p.push(`<text x="${r1((x0 + x1) / 2)}" y="${r1(12 + fs * 1.1)}" text-anchor="middle" font-size="${fs * 1.15}" font-weight="bold">${esc(st.title)}</text>`);
+  const band = (x1 - x0) / n, bw = band * clamp(numOr(st.barWidth, 0.62), 0.2, 0.95), cx = i => x0 + band * (i + 0.5);
+  const base = Y(clamp(0, rng.lo, rng.hi));
+  const stroke = st.border ? ' stroke="#000" stroke-width="1"' : '';
+  const ptR = clamp(fs * 0.26, 2.5, 6);
+  const clipId = 'c' + sh.id;
+  p.push(`<defs><clipPath id="${clipId}"><rect x="${x0}" y="${y0 - 200}" width="${x1 - x0}" height="${y1 - y0 + 200}"/></clipPath></defs><g clip-path="url(#${clipId})">`);
+  const errBar = (x, m, e, w, col = '#000') => {
+    if (!(e > 0)) return '';
+    const yt = r1(Y(m + e)), yb = r1(both ? Y(m - e) : Y(m)), c = Math.min(w * 0.36, 16);
+    return `<line x1="${r1(x)}" y1="${yt}" x2="${r1(x)}" y2="${yb}" stroke="${col}" stroke-width="1.2"/><line x1="${r1(x - c / 2)}" y1="${yt}" x2="${r1(x + c / 2)}" y2="${yt}" stroke="${col}" stroke-width="1.2"/>` +
+      (both ? `<line x1="${r1(x - c / 2)}" y1="${yb}" x2="${r1(x + c / 2)}" y2="${yb}" stroke="${col}" stroke-width="1.2"/>` : '');
+  };
+  const points = (g, i, fill, strokeC) => {
+    const m = g.vals.length, sp = Math.min(ptR * 2.3, (bw * 0.8) / Math.max(1, m));
+    return g.vals.map((v, j) => `<circle cx="${r1(cx(i) + (j - (m - 1) / 2) * sp)}" cy="${r1(Y(v))}" r="${ptR}" fill="${fill}" stroke="${strokeC}" stroke-width="1"/>`).join('');
+  };
+  G.forEach((g, i) => {
+    const x = cx(i), e = errOf(g);
+    if (barLike) {
+      const ym = Y(g.mean), top = Math.min(ym, base), h = Math.abs(base - ym);
+      // draw error bar first only for the lower part when both; upper is above bar
+      p.push(`<rect x="${r1(x - bw / 2)}" y="${r1(top)}" width="${r1(bw)}" height="${r1(h)}" fill="${g.color}"${stroke}/>`);
+      p.push(errBar(x, g.mean, e, bw));
+      if (type === 'barpts') p.push(points(g, i, '#fff', '#222'));
+    } else if (type === 'dot') {
+      p.push(points(g, i, g.color, darken(g.color)));
+      const w = bw * 0.7; p.push(`<line x1="${r1(x - w / 2)}" y1="${r1(Y(g.mean))}" x2="${r1(x + w / 2)}" y2="${r1(Y(g.mean))}" stroke="#000" stroke-width="2"/>`);
+      p.push(errBar(x, g.mean, e, bw));
+    } else if (type === 'box') {
+      const s = [...g.vals].sort((a, b) => a - b), iqr = g.q3 - g.q1;
+      const inside = s.filter(v => v >= g.q1 - 1.5 * iqr && v <= g.q3 + 1.5 * iqr);
+      const wlo = inside.length ? inside[0] : g.min, whi = inside.length ? inside[inside.length - 1] : g.max, c = Math.min(bw * 0.36, 16);
+      p.push(`<line x1="${r1(x)}" y1="${r1(Y(whi))}" x2="${r1(x)}" y2="${r1(Y(g.q3))}" stroke="#000" stroke-width="1.2"/><line x1="${r1(x)}" y1="${r1(Y(g.q1))}" x2="${r1(x)}" y2="${r1(Y(wlo))}" stroke="#000" stroke-width="1.2"/>`);
+      p.push(`<line x1="${r1(x - c / 2)}" y1="${r1(Y(whi))}" x2="${r1(x + c / 2)}" y2="${r1(Y(whi))}" stroke="#000" stroke-width="1.2"/><line x1="${r1(x - c / 2)}" y1="${r1(Y(wlo))}" x2="${r1(x + c / 2)}" y2="${r1(Y(wlo))}" stroke="#000" stroke-width="1.2"/>`);
+      p.push(`<rect x="${r1(x - bw / 2)}" y="${r1(Y(g.q3))}" width="${r1(bw)}" height="${r1(Math.max(0.5, Y(g.q1) - Y(g.q3)))}" fill="${g.color}"${st.border ? ' stroke="#000" stroke-width="1"' : ' stroke="' + darken(g.color) + '" stroke-width="1"'}/>`);
+      p.push(`<line x1="${r1(x - bw / 2)}" y1="${r1(Y(g.median))}" x2="${r1(x + bw / 2)}" y2="${r1(Y(g.median))}" stroke="#000" stroke-width="2"/>`);
+      p.push(points(g, i, '#fff', '#222'));
+    }
+  });
+  p.push('</g>');
+  // axes
+  drawYAxis(p, { x0, x1, y0, y1, lo: rng.lo, hi: rng.hi, step: rng.step, fs, minor: st.minor, frame: st.frame, title: yTitle });
+  p.push(`<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#000" stroke-width="1.2"/>`);
+  G.forEach((g, i) => {
+    const x = r1(cx(i)); p.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y1 + 5}" stroke="#000" stroke-width="1.2"/>`);
+    if (rot === 0) p.push(`<text x="${x}" y="${r1(y1 + 8 + fs * 0.95)}" text-anchor="middle" font-size="${fs}">${esc(g.name)}</text>`);
+    else p.push(`<text transform="translate(${x},${r1(y1 + 9)}) rotate(-${rot})" text-anchor="end" dy="${rot === 90 ? '0.35em' : '0.7em'}" font-size="${fs}">${esc(g.name)}</text>`);
+  });
+  if (st.xTitle) p.push(`<text x="${r1((x0 + x1) / 2)}" y="${r1(H - 10)}" text-anchor="middle" font-size="${fs * 1.07}">${esc(st.xTitle)}</text>`);
+  // significance
+  layout.markPos.forEach(m => p.push(`<text x="${r1(cx(m.i))}" y="${r1(m.y)}" text-anchor="middle" font-size="${m.label === 'ns' ? fs * 0.85 : fs * 1.05}" font-weight="${m.label === 'ns' ? 'normal' : 'bold'}">${m.label}</text>`));
+  layout.placed.forEach(bk => {
+    const xa = r1(cx(bk.a)), xb = r1(cx(bk.b)), y = r1(bk.y);
+    p.push(`<path d="M${xa},${y + 5} V${y} H${xb} V${y + 5}" fill="none" stroke="#000" stroke-width="1"/><text x="${r1((xa + xb) / 2)}" y="${r1(y - 3)}" text-anchor="middle" font-size="${bk.label === 'ns' ? fs * 0.85 : fs}" font-weight="${bk.label === 'ns' ? 'normal' : 'bold'}">${bk.label}</text>`);
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(ff)}" fill="#000">${p.join('')}</svg>`;
+}
+
+const MARKERS = ['circle', 'square', 'triangle', 'diamond'];
+function marker(kind, x, y, r, fill, strokeC) {
+  const a = `fill="${fill}" stroke="${strokeC}" stroke-width="1"`;
+  if (kind === 'square') return `<rect x="${r1(x - r * 0.9)}" y="${r1(y - r * 0.9)}" width="${r1(r * 1.8)}" height="${r1(r * 1.8)}" ${a}/>`;
+  if (kind === 'triangle') return `<path d="M${r1(x)},${r1(y - r * 1.15)} L${r1(x + r * 1.05)},${r1(y + r * 0.75)} L${r1(x - r * 1.05)},${r1(y + r * 0.75)} Z" ${a}/>`;
+  if (kind === 'diamond') return `<path d="M${r1(x)},${r1(y - r * 1.2)} L${r1(x + r * 1.2)},${r1(y)} L${r1(x)},${r1(y + r * 1.2)} L${r1(x - r * 1.2)},${r1(y)} Z" ${a}/>`;
+  return `<circle cx="${r1(x)}" cy="${r1(y)}" r="${r}" ${a}/>`;
+}
+function renderXY(sh, an, W, H, fs, ff) {
+  const st = sh.settings, S = an.series;
+  const xs = S.flatMap(s => s.pts.map(p => p.x)), ysHi = S.flatMap(s => s.pts.map(p => p.y + p.e)), ysLo = S.flatMap(s => s.pts.map(p => p.y - p.e));
+  const xr = axisRange(Math.min(...xs), Math.max(...xs), st.xMin, st.xMax, false, 0.04, false);
+  const yr = axisRange(Math.min(...ysLo), Math.max(...ysHi), st.yMin, st.yMax, false, 0.06);
+  const yTitle = st.yTitle || (S.length === 1 ? S[0].name : 'Y');
+  const xTitle = st.xTitle || an.xName;
+  const T = 12 + (st.title ? fs * 1.8 : 0), B = 10 + fs * 1.3 + 8 + (xTitle ? fs * 1.7 : 0), Rm = 18;
+  const L = 14 + (yTitle ? fs * 1.5 : 0) + yLabelWidth(yr.lo, yr.hi, yr.step, fs) + 12;
+  const x0 = L, x1 = W - Rm, y0 = T, y1 = H - B;
+  const X = v => x0 + (v - xr.lo) * (x1 - x0) / (xr.hi - xr.lo);
+  const p = [`<rect width="${W}" height="${H}" fill="#fff"/>`];
+  if (st.title) p.push(`<text x="${r1((x0 + x1) / 2)}" y="${r1(12 + fs * 1.1)}" text-anchor="middle" font-size="${fs * 1.15}" font-weight="bold">${esc(st.title)}</text>`);
+  const Y = drawYAxis(p, { x0, x1, y0, y1, lo: yr.lo, hi: yr.hi, step: yr.step, fs, minor: st.minor, frame: st.frame, title: yTitle });
+  // x axis
+  const xdec = decimalsOf(xr.step), xt = ticksFor(xr.lo, xr.hi, xr.step);
+  p.push(`<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="#000" stroke-width="1.2"/>`);
+  xt.forEach(t => { const x = r1(X(t)); p.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y1 + 6}" stroke="#000" stroke-width="1.2"/><text x="${x}" y="${r1(y1 + 9 + fs * 0.95)}" text-anchor="middle" font-size="${fs}">${t.toFixed(xdec)}</text>`); });
+  if (st.minor) for (let k = 0; k <= xt.length; k++) { const v = xt[0] - xr.step + xr.step * (k + 0.5); if (v > xr.lo && v < xr.hi) { const x = r1(X(v)); p.push(`<line x1="${x}" y1="${y1}" x2="${x}" y2="${y1 + 3}" stroke="#000" stroke-width="1"/>`); } }
+  if (xTitle) p.push(`<text x="${r1((x0 + x1) / 2)}" y="${r1(H - 10)}" text-anchor="middle" font-size="${fs * 1.07}">${esc(xTitle)}</text>`);
+  const clipId = 'c' + sh.id;
+  p.push(`<defs><clipPath id="${clipId}"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath></defs><g clip-path="url(#${clipId})">`);
+  const r = clamp(fs * 0.3, 2.5, 7);
+  S.forEach((s, k) => {
+    const col = s.color, mk = MARKERS[k % MARKERS.length];
+    if (s.fit) { const a = Math.max(xr.lo, Math.min(...s.pts.map(q => q.x))), b = Math.min(xr.hi, Math.max(...s.pts.map(q => q.x))); p.push(`<line x1="${r1(X(a))}" y1="${r1(Y(s.fit.intercept + s.fit.slope * a))}" x2="${r1(X(b))}" y2="${r1(Y(s.fit.intercept + s.fit.slope * b))}" stroke="${col}" stroke-width="1.6"/>`); }
+    if (st.xyStyle !== 'scatter') p.push(`<polyline points="${s.pts.map(q => r1(X(q.x)) + ',' + r1(Y(q.y))).join(' ')}" fill="none" stroke="${col}" stroke-width="1.6"/>`);
+    s.pts.forEach(q => { if (q.e > 0) { const x = r1(X(q.x)), ya = r1(Y(q.y + q.e)), yb = r1(Y(q.y - q.e)), c = 5; p.push(`<path d="M${x},${ya} V${yb} M${x - c},${ya} H${x + c} M${x - c},${yb} H${x + c}" stroke="${col}" stroke-width="1.1" fill="none"/>`); } });
+    if (st.xyStyle !== 'line') s.pts.forEach(q => p.push(marker(mk, X(q.x), Y(q.y), r, col, darken(col))));
+  });
+  p.push('</g>');
+  if (st.legend) {
+    let ly = y0 + 8 + fs * 0.6; const lx = x0 + 14;
+    S.forEach((s, k) => {
+      if (st.xyStyle !== 'line') p.push(marker(MARKERS[k % MARKERS.length], lx + 8, ly, r, s.color, darken(s.color)));
+      if (st.xyStyle !== 'scatter' || s.fit) p.push(`<line x1="${lx - 2}" y1="${r1(ly)}" x2="${lx + 18}" y2="${r1(ly)}" stroke="${s.color}" stroke-width="1.6"/>`);
+      p.push(`<text x="${lx + 26}" y="${r1(ly)}" dy="0.35em" font-size="${fs * 0.9}">${esc(s.name)}</text>`); ly += fs * 1.35;
+      if (s.fit) { const f = s.fit; p.push(`<text x="${lx + 26}" y="${r1(ly - fs * 0.2)}" dy="0.35em" font-size="${fs * 0.78}" fill="#333">y = ${+f.slope.toPrecision(4)}x ${f.intercept < 0 ? '−' : '+'} ${+Math.abs(f.intercept).toPrecision(4)}, R² = ${f.r2.toFixed(4)}</text>`); ly += fs * 1.2; }
+    });
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(ff)}" fill="#000">${p.join('')}</svg>`;
+}
+
+/* ---------- results ---------- */
+let lastTables = {}, lastAn = null, lastSVG = '';
+function tsvOf(head, rows) { return [head, ...rows].map(r => r.join('\t')).join('\n'); }
+function tableHTML(head, rows, numericFrom = 1, firstHTML) {
+  return `<div class="table-scroll"><table class="rt"><thead><tr>${head.map((h, i) => `<th${i >= numericFrom ? ' class="n"' : ''} scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r, ri) => `<tr>${r.map((c, i) => `<td${i >= numericFrom ? ' class="n"' : ''}>${i === 0 && firstHTML ? firstHTML[ri] : esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function legendSentence(sh, an) {
+  const st = sh.settings, G = an.groups, ns = [...new Set(G.map(g => g.n))].sort((a, b) => a - b);
+  const nTxt = ns.length === 1 ? `n = ${ns[0]} per group` : `n = ${ns[0]}–${ns[ns.length - 1]} per group`;
+  const err = { sd: 'mean ± SD', sem: 'mean ± SEM', ci: 'mean with 95% confidence interval' }[st.err];
+  const ctrl = G[an.ci] ? G[an.ci].name : 'control';
+  let s = `Data are shown as ${err} (${nTxt}).`;
+  if (an.norm) s += ` Values are expressed as a percentage of ${ctrl}${numOr(st.blank, 0) ? ' after blank subtraction' : ''}.`;
+  const a = numOr(st.alpha, 0.05);
+  const starTxt = a <= 0.01 ? '**p < 0.01, ***p < 0.001' : '*p < 0.05, **p < 0.01, ***p < 0.001';
+  const t = { anova: 'one-way ANOVA', dunnett: `one-way ANOVA followed by Dunnett's multiple comparisons test against ${ctrl}`, tukey: "one-way ANOVA followed by Tukey's multiple comparisons test", welch: `Welch's t-test against ${ctrl} with Holm correction` }[st.test];
+  if (t) s += ` Statistical significance was assessed by ${t}${st.test !== 'anova' ? ` (${starTxt}${st.showNs ? '; ns, not significant' : ''})` : ''}.`;
+  return s;
+}
+function renderResults(sh, an) {
+  const el = $('#results'); lastTables = {};
+  if (an.empty) { el.innerHTML = `<p class="empty-msg">${an.mode === 'xy' ? 'Set one column as X and at least one as Y, then enter values.' : 'Enter or paste numbers in the worksheet. Each column is a group.'}</p>`; return; }
+  const st = sh.settings; let h = '';
+  if (an.mode === 'xy') {
+    const head = ['Series', 'N', 'Slope', 'Intercept', 'R²'];
+    const rows = an.series.map(s => [s.name, s.pts.length, s.fit ? fmt(s.fit.slope) : '—', s.fit ? fmt(s.fit.intercept) : '—', s.fit ? s.fit.r2.toFixed(5) : '—']);
+    lastTables.xy = tsvOf(head, rows);
+    h += `<div><div class="block-head"><h3>Series</h3><span class="note">${st.fit ? 'Ordinary least-squares linear fit' : 'Turn on Linear fit in Graph settings to get slope, intercept and R²'}</span><button class="btn small" type="button" data-copy="xy">Copy table</button></div>${tableHTML(head, rows)}</div>`;
+    el.innerHTML = h; return;
+  }
+  const G = an.groups, alpha = numOr(st.alpha, 0.05);
+  // verdict
+  if (an.anova) {
+    const a = an.anova, sig = a.p < alpha;
+    h += `<div class="verdict"><span class="chip ${sig ? 'ok' : 'neutral'}">${sig ? 'Groups differ' : 'No significant difference'}</span><span class="stat-line">One-way ANOVA: F(${a.dfb}, ${a.dfw}) = ${a.F.toFixed(3)}, p ${a.p < 0.0001 ? '< 0.0001' : '= ' + a.p.toFixed(4)}</span></div>`;
+  }
+  if (an.warn.length) h += an.warn.map(w => `<p class="hint">${esc(w)}</p>`).join('');
+  // summary
+  const unit = an.norm ? '% of ' + G[an.ci].name : (an.b ? 'blank-subtracted' : 'raw values');
+  const sHead = ['Group', 'N', 'Mean', 'SD', 'SEM', '95% CI ±', 'Min', 'Max'];
+  const sRows = G.map(g => [g.name, g.n, fmt(g.mean), fmt(g.sd), fmt(g.sem), fmt(g.ci), fmt(g.min), fmt(g.max)]);
+  lastTables.summary = tsvOf(sHead, sRows);
+  h += `<div><div class="block-head"><h3>Summary</h3><span class="note">${esc(unit)}</span><button class="btn small" type="button" data-copy="summary">Copy table</button></div>${tableHTML(sHead, sRows, 1, G.map(g => `<span class="sw" style="background:${g.color}"></span>${esc(g.name)}`))}</div>`;
+  // post hoc
+  if (an.post && an.post.length) {
+    const statName = st.test === 'tukey' ? 'q' : 't';
+    const pHead = ['Comparison', 'Mean diff', statName, st.test === 'welch' ? 'p (Holm)' : 'p (adjusted)', 'Summary'];
+    const pRows = an.post.map(r => [`${G[r.i].name} vs ${G[r.j].name}`, fmt(r.diff), r.stat.toFixed(3), fmtP(r.p), stars(r.p, alpha)]);
+    lastTables.post = tsvOf(pHead, pRows);
+    h += `<div><div class="block-head"><h3>${esc(testLabel[st.test])}</h3><span class="note">two-sided, α = ${alpha}</span><button class="btn small" type="button" data-copy="post">Copy table</button></div>
+      <div class="table-scroll"><table class="rt"><thead><tr>${pHead.map((x, i) => `<th${i > 0 && i < 4 ? ' class="n"' : ''} scope="col">${esc(x)}</th>`).join('')}</tr></thead><tbody>${pRows.map(r => `<tr><td>${esc(r[0])}</td><td class="n">${r[1]}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td><td><span class="chip ${r[4] === 'ns' ? 'neutral' : 'ok'}">${r[4]}</span></td></tr>`).join('')}</tbody></table></div></div>`;
+  }
+  // transformed data
+  if (an.norm || an.b) {
+    const m = Math.max(...G.map(g => g.vals.length)), tHead = G.map(g => g.name);
+    const tRows = Array.from({ length: m }, (_, r) => G.map(g => (g.vals[r] !== undefined ? (+g.vals[r].toFixed(4)).toString() : '')));
+    lastTables.transformed = tsvOf(tHead, tRows);
+    h += `<div><div class="block-head"><h3>${an.norm ? 'Normalized values per well' : 'Blank-subtracted values'}</h3><span class="note">${an.norm ? `(value − ${an.b}) ÷ (${G[an.ci].name} mean − ${an.b}) × 100` : 'value − ' + an.b}</span><button class="btn small" type="button" data-copy="transformed">Copy table</button></div>${tableHTML(tHead, tRows, 0)}</div>`;
+  }
+  if (an.anova) {
+    const a = an.anova, aHead = ['Source', 'SS', 'df', 'MS', 'F', 'p'];
+    const aRows = [['Between groups', fmt(a.ssb), a.dfb, fmt(a.msb), a.F.toFixed(3), fmtP(a.p)], ['Within groups', fmt(a.ssw), a.dfw, fmt(a.msw), '', ''], ['Total', fmt(a.sst), a.dft, '', '', '']];
+    lastTables.anova = tsvOf(aHead, aRows);
+    h += `<div><div class="block-head"><h3>ANOVA table</h3><span class="note"></span><button class="btn small" type="button" data-copy="anova">Copy table</button></div>${tableHTML(aHead, aRows)}</div>`;
+  }
+  const leg = legendSentence(sh, an); lastTables.legend = leg;
+  h += `<div><div class="block-head"><h3>Figure legend text</h3><span class="note">for your thesis or paper</span><button class="btn small" type="button" data-copy="legend">Copy text</button></div><p class="legend-text">${esc(leg)}</p></div>`;
+  el.innerHTML = h;
+}
+$('#results').addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b && lastTables[b.dataset.copy]) copyText(lastTables[b.dataset.copy], 'Copied. Paste into Excel, Origin or Word.'); });
+
+/* ---------- settings panel ---------- */
+function syncPanel() {
+  const sh = cur(), st = sh.settings, panel = $('#panel');
+  panel.dataset.mode = st.mode;
+  // control options
+  const useCols = sh.cols.filter(c => c.use !== false);
+  if (!useCols.some(c => c.id === st.control) && useCols[0]) st.control = useCols[0].id;
+  $('#ctlSel').innerHTML = useCols.map(c => `<option value="${c.id}">${esc(c.name || letter(sh.cols.indexOf(c)))}</option>`).join('');
+  $('#palSel').innerHTML = Object.entries(PALETTES).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join('');
+  $$('[data-k]').forEach(inp => {
+    const k = inp.dataset.k, v = st[k];
+    if (inp.type === 'checkbox') inp.checked = !!v;
+    else if (inp.type === 'radio') inp.checked = String(v) === inp.value;
+    else inp.value = v ?? '';
+  });
+  renderPalettePreview(); renderColorList();
+}
+function renderPalettePreview() { const st = cur().settings; $('#palSw').innerHTML = paletteColors(st.palette, 6, st.mode === 'groups' ? 0 : null).map(c => `<i style="background:${c}"></i>`).join(''); }
+function renderColorList() {
+  const sh = cur(), an = lastAn; const el = $('#colorList');
+  const items = !an || an.empty ? [] : an.mode === 'xy' ? an.series : an.groups;
+  el.innerHTML = items.map(g => `<div class="color-row"><input type="color" value="${g.color.toLowerCase()}" data-color="${g.id}" id="col-${g.id}" aria-label="Color for ${esc(g.name)}"><label for="col-${g.id}">${esc(g.name)}</label><code>${g.color.toUpperCase()}</code></div>`).join('') +
+    (Object.keys(sh.settings.colors).length ? '<button class="btn small ghost" type="button" id="resetColors">Reset to palette</button>' : '');
+}
+const panelEl = $('#panel');
+function onSetting(e) {
+  const inp = e.target; if (!inp.dataset) return;
+  const sh = cur(), st = sh.settings;
+  if (inp.dataset.color) { st.colors[inp.dataset.color] = inp.value.toUpperCase(); const code = inp.parentElement.querySelector('code'); if (code) code.textContent = inp.value.toUpperCase(); scheduleUpdate(false, true); return; }
+  const k = inp.dataset.k; if (!k) return;
+  if (inp.type === 'radio' && !inp.checked) return;
+  st[k] = inp.type === 'checkbox' ? inp.checked : inp.value;
+  if (k === 'mode') { st.colors = {}; if (st.mode === 'xy' && !sh.cols.some(c => c.role === 'x') && sh.cols[0]) sh.cols[0].role = 'x'; renderGrid(); syncPanel(); }
+  if (k === 'palette') { st.colors = {}; renderPalettePreview(); }
+  if (k === 'control') renderGrid();
+  scheduleUpdate(false, e.type === 'input' && (inp.type === 'text' || inp.type === 'number' || inp.type === 'range'));
+}
+panelEl.addEventListener('input', onSetting);
+panelEl.addEventListener('change', onSetting);
+panelEl.addEventListener('click', e => { if (e.target.id === 'resetColors') { cur().settings.colors = {}; update(); } });
+$('#pngScale').addEventListener('change', e => { cur().settings.pngScale = e.target.value; scheduleSave(); });
+
+/* ---------- update loop ---------- */
+let updTimer;
+function scheduleUpdate(alsoPanel, keepColorList) { clearTimeout(updTimer); updTimer = setTimeout(() => { update(keepColorList); if (alsoPanel) syncPanel(); }, 120); }
+function update(keepColorList) {
+  const sh = cur(); const an = analyze(sh); lastAn = an;
+  lastSVG = renderGraph(sh, an);
+  const fig = $('#fig'); fig.innerHTML = lastSVG;
+  const W = numOr(sh.settings.width, 520); fig.style.maxWidth = W + 'px';
+  renderResults(sh, an);
+  if (!keepColorList) renderColorList();
+  const n = sh.cols.reduce((s, c) => s + c.values.filter(isNum).length, 0);
+  $('#sheetFoot').textContent = `${sh.cols.length} columns · ${n} numeric values. Paste from Excel or Origin into any cell; Enter moves down.`;
+  scheduleSave();
+}
+function renderAll() { renderTabs(); renderGrid(); syncPanel(); update(); }
+
+/* ---------- export ---------- */
+const safeName = s => (s || 'graph').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'graph';
+function svgToPng(svg, W, H, scale) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = Math.round(W * scale); c.height = Math.round(H * scale);
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => (b ? resolve({ blob: b, url: c.toDataURL('image/png') }) : reject(new Error('PNG failed'))), 'image/png');
+    };
+    img.onerror = () => reject(new Error('Could not render the graph'));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+$('#pngBtn').addEventListener('click', async () => {
+  const sh = cur(), st = sh.settings, scale = numOr(st.pngScale, 3);
+  const W = Math.round(clamp(numOr(st.width, 520), 240, 2000)), H = Math.round(clamp(numOr(st.height, 400), 200, 2000));
+  try {
+    const { blob, url } = await svgToPng(lastSVG, W, H, scale);
+    offerFile(safeName(sh.name) + '.png', blob, () => openModal(`<h2 id="modalTitle">PNG image</h2><p>Right-click the image and choose Save image or Copy image. On a phone, press and hold it.</p><img src="${url}" alt="Exported graph"><div class="actions"><button class="btn" type="button" data-close>Close</button></div>`));
+  } catch (e) { toast(e.message); }
+});
+$('#svgBtn').addEventListener('click', () => {
+  const sh = cur();
+  offerFile(safeName(sh.name) + '.svg', '<?xml version="1.0" encoding="UTF-8"?>\n' + lastSVG, () => copyText(lastSVG, 'SVG code copied. Paste it into a .svg file, Illustrator or Inkscape.'));
+});
+$('#csvBtn').addEventListener('click', () => {
+  const sh = cur(), parts = [];
+  const names = { summary: 'Summary', post: 'Post hoc tests', anova: 'ANOVA', transformed: 'Normalized values', xy: 'Series' };
+  Object.entries(names).forEach(([k, t]) => { if (lastTables[k]) parts.push(t + '\n' + lastTables[k].split('\n').map(l => l.split('\t').map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n')); });
+  if (lastTables.legend) parts.push('Figure legend\n"' + lastTables.legend.replace(/"/g, '""') + '"');
+  if (!parts.length) { toast('No results to export yet'); return; }
+  const csv = parts.join('\n\n');
+  offerFile(safeName(sh.name) + ' results.csv', '﻿' + csv, () => copyText(csv, 'Results copied as CSV text'));
+});
+$('#saveProjBtn').addEventListener('click', () => {
+  const json = JSON.stringify({ app: 'Lab Grapher', version: 1, ...state }, null, 1);
+  offerFile('Lab Grapher project.json', json, () => openModal(`<h2 id="modalTitle">Project file</h2><p>Copy this text and save it as a .json file. Use Open project to load it later.</p><textarea readonly id="projText">${esc(json)}</textarea><div class="actions"><button class="btn" type="button" data-close>Close</button><button class="btn primary" type="button" id="copyProj">Copy</button></div>`));
+});
+$('#modal').addEventListener('click', e => { if (e.target.id === 'copyProj') copyText($('#projText').value, 'Project copied'); });
+$('#openProjBtn').addEventListener('click', () => $('#openProjFile').click());
+$('#openProjFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const s = JSON.parse(await f.text());
+    if (!s || !Array.isArray(s.sheets) || !s.sheets.length) throw new Error();
+    state = normalizeState({ sheets: s.sheets, active: s.active }); renderAll(); toast(`Opened ${state.sheets.length} sheet${state.sheets.length > 1 ? 's' : ''}`);
+  } catch (err) { toast('That file is not a Lab Grapher project (.json).'); }
+});
+$('#resetEx').addEventListener('click', () => {
+  const ex = exampleSheets(); state.sheets.push(...ex); state.active = ex[0].id; renderAll(); toast('Added the example sheets');
+});
+
+/* ---------- import dialog ---------- */
+function importPreview() {
+  const txt = $('#impText').value, layout = $('input[name=impLayout]:checked').value;
+  const rows = splitRows(txt); const out = $('#impPreview');
+  if (!rows.length) { out.textContent = 'Nothing to import yet.'; return null; }
+  const res = rowsToColumns(rows, layout);
+  const n = res.cols.map(c => c.values.filter(isNum).length);
+  out.innerHTML = `Found <b>${res.cols.length}</b> column${res.cols.length > 1 ? 's' : ''} (${res.layout === 'rows' ? 'groups were in rows' : 'groups in columns'}): ${res.cols.slice(0, 8).map((c, i) => `${esc(c.name || letter(i))} <span class="hint">n=${n[i]}</span>`).join(', ')}${res.cols.length > 8 ? ', …' : ''}`;
+  return res;
+}
+let xlsxLoading = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!xlsxLoading) xlsxLoading = new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = () => res(window.XLSX); s.onerror = () => { xlsxLoading = null; rej(new Error('Could not load the Excel reader. Save the sheet as CSV and try again.')); }; document.head.appendChild(s); });
+  return xlsxLoading;
+}
+$('#importBtn').addEventListener('click', () => {
+  openModal(`<h2 id="modalTitle">Import data</h2>
+  <p>Paste from Excel, Origin or a text file, or choose a file. Groups can be in columns with a header row, or in rows with the name first.</p>
+  <textarea id="impText" autofocus placeholder="Control&#9;3A&#9;5A&#10;1.422&#9;1.363&#9;1.516&#10;…&#10;&#10;or&#10;&#10;Control 1.422 1.425 1.427&#10;3A 1.363 1.395 1.405"></textarea>
+  <div class="row"><label class="btn small" for="impFile">Choose file (.csv, .txt, .xlsx)</label><input type="file" id="impFile" accept=".csv,.tsv,.txt,.xlsx,.xls" hidden><span class="hint" id="impFileName"></span></div>
+  <div class="row"><span class="hint">Layout</span><div class="seg" role="radiogroup" aria-label="Import layout" style="flex:1">
+    <label><input type="radio" name="impLayout" value="auto" checked>Auto-detect</label><label><input type="radio" name="impLayout" value="columns">Groups in columns</label><label><input type="radio" name="impLayout" value="rows">Groups in rows</label></div></div>
+  <div class="row"><span class="hint">Put into</span><div class="seg" role="radiogroup" aria-label="Destination" style="flex:1">
+    <label><input type="radio" name="impDest" value="new" checked>New sheet</label><label><input type="radio" name="impDest" value="replace">Replace current sheet</label></div></div>
+  <div class="preview" id="impPreview">Nothing to import yet.</div>
+  <div class="actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="button" id="impGo">Import</button></div>`);
+});
+$('#modal').addEventListener('input', e => { if (e.target.id === 'impText') importPreview(); });
+$('#modal').addEventListener('change', async e => {
+  if (e.target.name === 'impLayout') importPreview();
+  if (e.target.id === 'impFile') {
+    const f = e.target.files[0]; if (!f) return; $('#impFileName').textContent = f.name;
+    try {
+      let text;
+      if (/\.xlsx?$/i.test(f.name)) { const X = await loadXLSX(); const wb = X.read(await f.arrayBuffer(), { type: 'array' }); text = X.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: '\t', blankrows: false }); }
+      else text = await f.text();
+      $('#impText').value = text; importPreview();
+    } catch (err) { $('#impPreview').textContent = err.message || 'Could not read that file.'; }
+  }
+});
+$('#modal').addEventListener('click', e => {
+  if (e.target.id !== 'impGo') return;
+  const res = importPreview(); if (!res || !res.cols.length) { toast('Paste some data first'); return; }
+  const dest = $('input[name=impDest]:checked').value;
+  const cols = res.cols.map(c => ({ name: c.name, values: c.values }));
+  if (dest === 'replace') {
+    const sh = cur(); const fresh = makeSheet(sh.name, cols, sh.settings); fresh.id = sh.id; fresh.settings.colors = {}; fresh.settings.control = fresh.cols[0].id;
+    state.sheets[state.sheets.indexOf(sh)] = fresh;
+  } else {
+    const sh = makeSheet('Sheet ' + (state.sheets.length + 1), cols); state.sheets.push(sh); state.active = sh.id;
+  }
+  closeModal(); renderAll(); toast(`Imported ${cols.length} column${cols.length > 1 ? 's' : ''}`);
+});
+
+renderAll();
+
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
